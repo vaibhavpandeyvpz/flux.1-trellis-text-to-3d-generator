@@ -699,23 +699,6 @@ with gr.Blocks(css=css, delete_cache=(600, 600)) as demo:
             None,
         )
 
-    def on_image_confirmed(img):
-        if img is not None:
-            return (
-                gr.update(interactive=True, visible=True),  # generate_3d_btn
-                gr.update(visible=True),  # video_output
-                gr.update(visible=True),  # model_output
-                gr.update(interactive=False, visible=True),  # download_glb
-                gr.update(interactive=False, visible=True),  # download_gs
-            )
-        return (
-            gr.update(interactive=False, visible=False),
-            gr.update(visible=False),
-            gr.update(visible=False),
-            gr.update(interactive=False, visible=False),
-            gr.update(interactive=False, visible=False),
-        )
-
     generate_image_btn.click(
         get_seed,
         inputs=[randomize_seed, seed],
@@ -742,18 +725,17 @@ with gr.Blocks(css=css, delete_cache=(600, 600)) as demo:
 
     # Step 2: Generate 3D (background removal handled by TRELLIS)
     confirm_image_btn.click(
-        on_image_confirmed,
-        inputs=[current_image],
-        outputs=[
-            generate_3d_btn,
-            video_output,
-            model_output,
-            download_glb,
-            download_gs,
-        ],
+        lambda: gr.update(interactive=True, visible=True),
+        outputs=[generate_3d_btn],
     )
 
     generate_3d_btn.click(
+        lambda: (
+            gr.update(visible=True),  # video_output
+            gr.update(visible=True),  # model_output
+        ),
+        outputs=[video_output, model_output],
+    ).then(
         get_seed,
         inputs=[randomize_seed_3d, seed_3d],
         outputs=[seed_3d],
