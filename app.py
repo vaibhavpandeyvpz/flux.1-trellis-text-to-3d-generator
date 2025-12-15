@@ -472,14 +472,8 @@ def extract_gaussian(state: dict, req: gr.Request) -> Tuple[str, str]:
 # ============================================================================
 css = """
 #col-container {
+    max-width: 1400px;
     margin: 0 auto;
-    max-width: 1200px;
-}
-.step-section {
-    border: 2px solid #e0e0e0;
-    border-radius: 10px;
-    padding: 20px;
-    margin: 10px 0;
 }
 """
 
@@ -510,183 +504,180 @@ with gr.Blocks(css=css, delete_cache=(600, 600)) as demo:
     )
 
     with gr.Column(elem_id="col-container"):
-        # ====================================================================
-        # Step 1: Text to Image
-        # ====================================================================
-        with gr.Group(elem_classes="step-section"):
-            gr.Markdown("## Step 1: Text to Image Generation")
-            with gr.Row():
-                with gr.Column():
-                    prompt = gr.Text(
-                        label="Prompt",
-                        show_label=True,
-                        max_lines=3,
-                        placeholder="Enter your text prompt here...",
+        # Step 1: Text to Image Generation
+        gr.Markdown("## Step 1: Text to Image Generation")
+        with gr.Row():
+            # Left: Settings
+            with gr.Column(scale=1):
+                prompt = gr.Text(
+                    label="Prompt",
+                    show_label=True,
+                    max_lines=3,
+                    placeholder="Enter your text prompt here...",
+                )
+
+                with gr.Row():
+                    generate_image_btn = gr.Button(
+                        "Generate Image", variant="primary", scale=1
                     )
-                    with gr.Row():
-                        generate_image_btn = gr.Button(
-                            "Generate Image", variant="primary", scale=1
-                        )
-                        confirm_image_btn = gr.Button(
-                            "Confirm & Generate 3D",
-                            variant="secondary",
-                            scale=1,
-                            interactive=False,
-                            visible=False,
-                        )
-
-                    generated_image = gr.Image(
-                        label="Generated Image",
-                        type="pil",
-                        height=400,
-                    )
-                    image_seed = gr.Number(
-                        label="Seed", value=0, interactive=False, visible=False
-                    )
-
-                with gr.Column():
-                    with gr.Accordion("Image Generation Settings", open=False):
-                        seed = gr.Slider(
-                            label="Seed",
-                            minimum=0,
-                            maximum=MAX_SEED,
-                            step=1,
-                            value=0,
-                        )
-                        randomize_seed = gr.Checkbox(label="Randomize seed", value=True)
-
-                        with gr.Row():
-                            width = gr.Slider(
-                                label="Width",
-                                minimum=256,
-                                maximum=MAX_IMAGE_SIZE,
-                                step=32,
-                                value=1024,
-                            )
-                            height = gr.Slider(
-                                label="Height",
-                                minimum=256,
-                                maximum=MAX_IMAGE_SIZE,
-                                step=32,
-                                value=1024,
-                            )
-
-                        with gr.Row():
-                            guidance_scale = gr.Slider(
-                                label="Guidance Scale",
-                                minimum=1.0,
-                                maximum=15.0,
-                                step=0.1,
-                                value=3.5,
-                            )
-                            num_inference_steps = gr.Slider(
-                                label="Number of inference steps",
-                                minimum=1,
-                                maximum=50,
-                                step=1,
-                                value=28,
-                            )
-
-                        enable_live_preview = gr.Checkbox(
-                            label="Enable Live Preview",
-                            value=True,
-                            info="Show intermediate images during generation",
-                        )
-                        use_quality_vae = gr.Checkbox(
-                            label="Use Quality VAE for Final Output",
-                            value=True,
-                            info="Use high-quality VAE for final image (slower but better quality)",
-                        )
-
-        # ====================================================================
-        # Step 2: 3D Generation
-        # ====================================================================
-        with gr.Group(elem_classes="step-section"):
-            gr.Markdown("## Step 2: 3D Model Generation")
-            with gr.Row():
-                with gr.Column():
-                    with gr.Accordion("3D Generation Settings", open=False):
-                        seed_3d = gr.Slider(0, MAX_SEED, label="Seed", value=0, step=1)
-                        randomize_seed_3d = gr.Checkbox(
-                            label="Randomize Seed", value=True
-                        )
-
-                        gr.Markdown("**Stage 1: Sparse Structure Generation**")
-                        with gr.Row():
-                            ss_guidance_strength = gr.Slider(
-                                0.0,
-                                10.0,
-                                label="Guidance Strength",
-                                value=7.5,
-                                step=0.1,
-                            )
-                            ss_sampling_steps = gr.Slider(
-                                1, 50, label="Sampling Steps", value=12, step=1
-                            )
-
-                        gr.Markdown("**Stage 2: Structured Latent Generation**")
-                        with gr.Row():
-                            slat_guidance_strength = gr.Slider(
-                                0.0,
-                                10.0,
-                                label="Guidance Strength",
-                                value=3.0,
-                                step=0.1,
-                            )
-                            slat_sampling_steps = gr.Slider(
-                                1, 50, label="Sampling Steps", value=12, step=1
-                            )
-
-                        with gr.Accordion("GLB Extraction Settings", open=False):
-                            mesh_simplify = gr.Slider(
-                                0.9, 0.98, label="Simplify", value=0.95, step=0.01
-                            )
-                            texture_size = gr.Slider(
-                                512, 2048, label="Texture Size", value=1024, step=512
-                            )
-
-                    generate_3d_btn = gr.Button(
-                        "Generate 3D Model",
-                        variant="primary",
+                    confirm_image_btn = gr.Button(
+                        "Confirm & Generate 3D",
+                        variant="secondary",
+                        scale=1,
                         interactive=False,
                         visible=False,
                     )
-                    extract_gs_btn = gr.Button(
-                        "Extract Gaussian", interactive=False, visible=False
+
+                gr.Markdown("### Image Generation Settings")
+                seed = gr.Slider(
+                    label="Seed",
+                    minimum=0,
+                    maximum=MAX_SEED,
+                    step=1,
+                    value=0,
+                )
+                randomize_seed = gr.Checkbox(label="Randomize seed", value=True)
+
+                with gr.Row():
+                    width = gr.Slider(
+                        label="Width",
+                        minimum=256,
+                        maximum=MAX_IMAGE_SIZE,
+                        step=32,
+                        value=1024,
+                    )
+                    height = gr.Slider(
+                        label="Height",
+                        minimum=256,
+                        maximum=MAX_IMAGE_SIZE,
+                        step=32,
+                        value=1024,
                     )
 
-                with gr.Column():
-                    video_output = gr.Video(
-                        label="Generated 3D Asset",
-                        autoplay=True,
-                        loop=True,
-                        height=300,
-                        visible=False,
+                with gr.Row():
+                    guidance_scale = gr.Slider(
+                        label="Guidance Scale",
+                        minimum=1.0,
+                        maximum=15.0,
+                        step=0.1,
+                        value=3.5,
                     )
-                    model_output = LitModel3D(
-                        label="Extracted GLB/Gaussian",
-                        exposure=10.0,
-                        height=300,
-                        visible=False,
+                    num_inference_steps = gr.Slider(
+                        label="Number of inference steps",
+                        minimum=1,
+                        maximum=50,
+                        step=1,
+                        value=28,
                     )
 
-                    with gr.Row():
-                        download_glb = gr.DownloadButton(
-                            label="Download GLB", interactive=False, visible=False
-                        )
-                        download_gs = gr.DownloadButton(
-                            label="Download Gaussian", interactive=False, visible=False
-                        )
+                enable_live_preview = gr.Checkbox(
+                    label="Enable Live Preview",
+                    value=True,
+                    info="Show intermediate images during generation",
+                )
+                use_quality_vae = gr.Checkbox(
+                    label="Use Quality VAE for Final Output",
+                    value=True,
+                    info="Use high-quality VAE for final image (slower but better quality)",
+                )
+                image_seed = gr.Number(
+                    label="Seed", value=0, interactive=False, visible=False
+                )
 
-        # State variables
-        output_buf = gr.State()
-        current_image = gr.State()
+            # Right: Preview
+            with gr.Column(scale=1):
+                generated_image = gr.Image(
+                    label="Generated Image",
+                    type="pil",
+                    height=500,
+                )
 
-        # Examples
-        gr.Examples(
-            examples=examples,
-            inputs=[prompt],
-        )
+        # Step 2: 3D Generation
+        gr.Markdown("## Step 2: 3D Model Generation")
+        with gr.Row():
+            # Left: Settings
+            with gr.Column(scale=1):
+                generate_3d_btn = gr.Button(
+                    "Generate 3D Model",
+                    variant="primary",
+                    interactive=False,
+                    visible=False,
+                )
+                extract_gs_btn = gr.Button(
+                    "Extract Gaussian", interactive=False, visible=False
+                )
+
+                gr.Markdown("### 3D Generation Settings")
+                seed_3d = gr.Slider(0, MAX_SEED, label="Seed", value=0, step=1)
+                randomize_seed_3d = gr.Checkbox(label="Randomize Seed", value=True)
+
+                gr.Markdown("**Stage 1: Sparse Structure Generation**")
+                with gr.Row():
+                    ss_guidance_strength = gr.Slider(
+                        0.0,
+                        10.0,
+                        label="Guidance Strength",
+                        value=7.5,
+                        step=0.1,
+                    )
+                    ss_sampling_steps = gr.Slider(
+                        1, 50, label="Sampling Steps", value=12, step=1
+                    )
+
+                gr.Markdown("**Stage 2: Structured Latent Generation**")
+                with gr.Row():
+                    slat_guidance_strength = gr.Slider(
+                        0.0,
+                        10.0,
+                        label="Guidance Strength",
+                        value=3.0,
+                        step=0.1,
+                    )
+                    slat_sampling_steps = gr.Slider(
+                        1, 50, label="Sampling Steps", value=12, step=1
+                    )
+
+                gr.Markdown("**GLB Extraction Settings**")
+                mesh_simplify = gr.Slider(
+                    0.9, 0.98, label="Simplify", value=0.95, step=0.01
+                )
+                texture_size = gr.Slider(
+                    512, 2048, label="Texture Size", value=1024, step=512
+                )
+
+            # Right: Previews
+            with gr.Column(scale=1):
+                video_output = gr.Video(
+                    label="Generated 3D Asset",
+                    autoplay=True,
+                    loop=True,
+                    height=300,
+                    visible=False,
+                )
+                model_output = LitModel3D(
+                    label="Extracted GLB/Gaussian",
+                    exposure=10.0,
+                    height=300,
+                    visible=False,
+                )
+
+                with gr.Row():
+                    download_glb = gr.DownloadButton(
+                        label="Download GLB", interactive=False, visible=False
+                    )
+                    download_gs = gr.DownloadButton(
+                        label="Download Gaussian", interactive=False, visible=False
+                    )
+
+    # State variables
+    output_buf = gr.State()
+    current_image = gr.State()
+
+    # Examples
+    gr.Examples(
+        examples=examples,
+        inputs=[prompt],
+    )
 
     # ========================================================================
     # Event Handlers
