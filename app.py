@@ -378,11 +378,11 @@ def generate_text_to_image(
     ):
         last_image = img
         if enable_live_preview:
-            yield img, seed, gr.update(interactive=True, visible=True)
+            yield img, seed, gr.update(interactive=False)
 
     # Return final image
     if not enable_live_preview or last_image is not None:
-        yield last_image, seed, gr.update(interactive=True, visible=True)
+        yield last_image, seed, gr.update(interactive=False)
 
 
 # ============================================================================
@@ -421,7 +421,7 @@ def generate_3d_model(
         image,
         seed=seed,
         formats=["gaussian", "mesh"],
-        preprocess_image=False,  # Image already preprocessed
+        preprocess_image=True,  # Let TRELLIS handle background removal
         sparse_structure_sampler_params={
             "steps": ss_sampling_steps,
             "cfg_strength": ss_guidance_strength,
@@ -571,23 +571,7 @@ with gr.Blocks(css=css, delete_cache=(600, 600)) as demo:
             height=500,
         )
 
-        # 5. Remove bg button
-        remove_bg_btn = gr.Button(
-            "Remove Background",
-            variant="primary",
-            interactive=False,
-            visible=False,
-        )
-
-        # 6. BG removed preview image
-        bg_removed_image = gr.Image(
-            label="Image with Background Removed",
-            type="pil",
-            height=500,
-            visible=False,
-        )
-
-        # 7. 3D generation params in two columns
+        # 5. 3D generation params in two columns
         with gr.Row():
             with gr.Column():
                 seed_3d = gr.Slider(0, MAX_SEED, label="Seed", value=0, step=1)
@@ -626,45 +610,37 @@ with gr.Blocks(css=css, delete_cache=(600, 600)) as demo:
                     512, 2048, label="Texture Size", value=1024, step=512
                 )
 
-        # 8. Generate 3D & Extract Gaussian button
+        # 6. Generate 3D & Extract Gaussian button
         with gr.Row():
             generate_3d_btn = gr.Button(
                 "Generate 3D Model",
                 variant="primary",
                 interactive=False,
-                visible=False,
             )
-            extract_gs_btn = gr.Button(
-                "Extract Gaussian", interactive=False, visible=False
-            )
+            extract_gs_btn = gr.Button("Extract Gaussian", interactive=False)
 
-        # 9. 3D view of generated 3D model
+        # 7. 3D view of generated 3D model
         video_output = gr.Video(
             label="Generated 3D Asset",
             autoplay=True,
             loop=True,
             height=400,
-            visible=False,
         )
         model_output = LitModel3D(
             label="Extracted GLB/Gaussian",
             exposure=10.0,
             height=400,
-            visible=False,
         )
 
-        # 10. Download buttons
+        # 8. Download buttons
         with gr.Row():
-            download_glb = gr.DownloadButton(
-                label="Download GLB", interactive=False, visible=False
-            )
+            download_glb = gr.DownloadButton(label="Download GLB", interactive=False)
             download_gs = gr.DownloadButton(
-                label="Download Gaussian", interactive=False, visible=False
+                label="Download Gaussian", interactive=False
             )
 
     # State variables
     output_buf = gr.State()
-    current_image = gr.State()
 
     # Examples for text prompts
     gr.Examples(
@@ -683,12 +659,12 @@ with gr.Blocks(css=css, delete_cache=(600, 600)) as demo:
             return (
                 img,
                 seed_val,
-                gr.update(interactive=True, visible=True),  # remove_bg_btn
+                gr.update(interactive=True),  # generate_3d_btn
             )
         return (
             None,
             seed_val,
-            gr.update(interactive=False, visible=False),
+            gr.update(interactive=False),
         )
 
     generate_image_btn.click(
@@ -708,54 +684,22 @@ with gr.Blocks(css=css, delete_cache=(600, 600)) as demo:
             enable_live_preview,
             use_quality_vae,
         ],
-        outputs=[generated_image, image_seed, remove_bg_btn],
+        outputs=[generated_image, image_seed, generate_3d_btn],
     ).then(
         on_image_generated,
         inputs=[generated_image, image_seed],
-        outputs=[generated_image, image_seed, remove_bg_btn],
-    )
-
-    # Remove background handler
-    def on_bg_removed(img):
-        if img is not None:
-            return (
-                gr.update(visible=True, value=img),  # bg_removed_image
-                gr.update(interactive=True, visible=True),  # generate_3d_btn
-                img,  # current_image for 3D generation
-            )
-        return (
-            gr.update(visible=False),
-            gr.update(interactive=False, visible=False),
-            None,
-        )
-
-    remove_bg_btn.click(
-        lambda img: preprocess_image(img) if img is not None else None,
-        inputs=[generated_image],
-        outputs=[bg_removed_image],
-    ).then(
-        on_bg_removed,
-        inputs=[bg_removed_image],
-        outputs=[bg_removed_image, generate_3d_btn, current_image],
+        outputs=[generated_image, image_seed, generate_3d_btn],
     )
 
     # Image to 3D handlers (matching working implementation)
     generate_3d_btn.click(
-        lambda: (
-            gr.update(visible=True),  # video_output
-            gr.update(visible=True),  # model_output
-            gr.update(visible=True),  # download_glb
-            gr.update(visible=True),  # download_gs
-        ),
-        outputs=[video_output, model_output, download_glb, download_gs],
-    ).then(
         get_seed,
         inputs=[randomize_seed_3d, seed_3d],
         outputs=[seed_3d],
     ).then(
         generate_3d_model,
         inputs=[
-            current_image,
+            generated_image,
             seed_3d,
             ss_guidance_strength,
             ss_sampling_steps,
@@ -766,12 +710,7 @@ with gr.Blocks(css=css, delete_cache=(600, 600)) as demo:
         ],
         outputs=[output_buf, video_output, model_output, download_glb],
     ).then(
-        lambda: tuple(
-            [
-                gr.Button(interactive=True, visible=True),  # extract_gs_btn
-                gr.Button(interactive=True, visible=True),  # download_glb
-            ]
-        ),
+        lambda: tuple([gr.Button(interactive=True), gr.Button(interactive=True)]),
         outputs=[extract_gs_btn, download_glb],
     )
 
