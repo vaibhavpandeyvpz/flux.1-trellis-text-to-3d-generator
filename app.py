@@ -7,7 +7,6 @@ from gradio_litmodel3d import LitModel3D
 
 import os
 import shutil
-import io
 
 os.environ["SPCONV_ALGO"] = "native"
 from typing import Any, Dict, List, Optional, Union, Tuple
@@ -17,7 +16,6 @@ import random
 import imageio
 from easydict import EasyDict as edict
 from PIL import Image
-import rembg
 from diffusers import DiffusionPipeline, AutoencoderTiny, AutoencoderKL
 
 from trellis.pipelines import TrellisImageTo3DPipeline
@@ -319,12 +317,9 @@ trellis_pipeline.cuda()
 try:
     trellis_pipeline.preprocess_image(
         Image.fromarray(np.zeros((512, 512, 3), dtype=np.uint8))
-    )  # Preload rembg
+    )  # Preload background removal
 except Exception:
     pass
-
-# Initialize rembg session
-rembg_session = rembg.new_session()
 
 torch.cuda.empty_cache()
 
@@ -383,34 +378,15 @@ def generate_text_to_image(
     ):
         last_image = img
         if enable_live_preview:
-            yield img, seed, gr.update(interactive=True, visible=True), gr.update(
-                interactive=False, visible=True
-            )
+            yield img, seed, gr.update(interactive=True, visible=True)
 
     # Return final image
     if not enable_live_preview or last_image is not None:
-        yield last_image, seed, gr.update(interactive=True, visible=True), gr.update(
-            interactive=False, visible=True
-        )
+        yield last_image, seed, gr.update(interactive=True, visible=True)
 
 
 # ============================================================================
-# Step 2: Background Removal
-# ============================================================================
-def remove_background(image: Image.Image) -> Tuple[Image.Image, gr.update]:
-    """Remove background from image using rembg."""
-    if image is None:
-        return None, gr.update(interactive=False, visible=True)
-
-    # Remove background - rembg.remove returns bytes, need to convert to Image
-    output_bytes = rembg.remove(image, session=rembg_session)
-    result_image = Image.open(io.BytesIO(output_bytes)).convert("RGBA")
-
-    return result_image, gr.update(interactive=True, visible=True)
-
-
-# ============================================================================
-# Step 3: Image to 3D Generation
+# Step 2: Image to 3D Generation
 # ============================================================================
 @spaces.GPU(duration=120)
 def generate_3d_model(
@@ -432,12 +408,12 @@ def generate_3d_model(
     user_dir = os.path.join(TMP_DIR, str(req.session_hash))
     os.makedirs(user_dir, exist_ok=True)
 
-    # Generate 3D model
+    # Generate 3D model (TRELLIS will handle background removal automatically)
     outputs = trellis_pipeline.run(
         image,
         seed=seed,
         formats=["gaussian", "mesh"],
-        preprocess_image=False,  # Already preprocessed
+        preprocess_image=True,  # Let TRELLIS handle background removal
         sparse_structure_sampler_params={
             "steps": ss_sampling_steps,
             "cfg_strength": ss_guidance_strength,
@@ -523,12 +499,11 @@ with gr.Blocks(css=css, delete_cache=(600, 600)) as demo:
         """
         # 🎨 Text to Image to 3D Generator
         
-        Complete workflow: Generate images from text using FLUX.1 → Remove background → Create 3D models with TRELLIS
+        Complete workflow: Generate images from text using FLUX.1 → Create 3D models with TRELLIS
         
         **Workflow Steps:**
         1. **Text to Image**: Enter a prompt and generate an image using FLUX.1 [dev]
-        2. **Background Removal**: Confirm and remove the background using rembg
-        3. **3D Generation**: Confirm and generate a 3D model using TRELLIS
+        2. **3D Generation**: Confirm and generate a 3D model using TRELLIS (background removal is handled automatically)
         
         Each step requires your confirmation before proceeding to the next.
         """
@@ -553,7 +528,7 @@ with gr.Blocks(css=css, delete_cache=(600, 600)) as demo:
                             "Generate Image", variant="primary", scale=1
                         )
                         confirm_image_btn = gr.Button(
-                            "Confirm & Remove Background",
+                            "Confirm & Generate 3D",
                             variant="secondary",
                             scale=1,
                             interactive=False,
@@ -624,44 +599,10 @@ with gr.Blocks(css=css, delete_cache=(600, 600)) as demo:
                         )
 
         # ====================================================================
-        # Step 2: Background Removal
+        # Step 2: 3D Generation
         # ====================================================================
         with gr.Group(elem_classes="step-section"):
-            gr.Markdown("## Step 2: Background Removal")
-            with gr.Row():
-                with gr.Column():
-                    image_with_bg = gr.Image(
-                        label="Image with Background",
-                        type="pil",
-                        height=300,
-                        visible=False,
-                    )
-                    remove_bg_btn = gr.Button(
-                        "Remove Background",
-                        variant="primary",
-                        interactive=False,
-                        visible=False,
-                    )
-
-                with gr.Column():
-                    image_no_bg = gr.Image(
-                        label="Image without Background (RGBA)",
-                        type="pil",
-                        height=300,
-                        visible=False,
-                    )
-                    confirm_3d_btn = gr.Button(
-                        "Confirm & Generate 3D",
-                        variant="primary",
-                        interactive=False,
-                        visible=False,
-                    )
-
-        # ====================================================================
-        # Step 3: 3D Generation
-        # ====================================================================
-        with gr.Group(elem_classes="step-section"):
-            gr.Markdown("## Step 3: 3D Model Generation")
+            gr.Markdown("## Step 2: 3D Model Generation")
             with gr.Row():
                 with gr.Column():
                     with gr.Accordion("3D Generation Settings", open=False):
@@ -770,11 +711,17 @@ with gr.Blocks(css=css, delete_cache=(600, 600)) as demo:
     def on_image_confirmed(img):
         if img is not None:
             return (
-                gr.update(visible=True, value=img),  # image_with_bg
-                gr.update(interactive=True, visible=True),  # remove_bg_btn
+                gr.update(interactive=True, visible=True),  # generate_3d_btn
+                gr.update(visible=True),  # video_output
+                gr.update(visible=True),  # model_output
+                gr.update(interactive=False, visible=True),  # download_glb
+                gr.update(interactive=False, visible=True),  # download_gs
             )
         return (
+            gr.update(interactive=False, visible=False),
             gr.update(visible=False),
+            gr.update(visible=False),
+            gr.update(interactive=False, visible=False),
             gr.update(interactive=False, visible=False),
         )
 
@@ -795,55 +742,17 @@ with gr.Blocks(css=css, delete_cache=(600, 600)) as demo:
             enable_live_preview,
             use_quality_vae,
         ],
-        outputs=[generated_image, image_seed, confirm_image_btn, remove_bg_btn],
+        outputs=[generated_image, image_seed, confirm_image_btn],
     ).then(
         on_image_generated,
         inputs=[generated_image, image_seed],
         outputs=[generated_image, image_seed, confirm_image_btn, current_image],
     )
 
+    # Step 2: Generate 3D (background removal handled by TRELLIS)
     confirm_image_btn.click(
         on_image_confirmed,
         inputs=[current_image],
-        outputs=[image_with_bg, remove_bg_btn],
-    )
-
-    # Step 2: Remove background
-    def on_bg_removed(img_no_bg):
-        if img_no_bg is not None:
-            return (
-                gr.update(visible=True, value=img_no_bg),  # image_no_bg
-                gr.update(interactive=True, visible=True),  # confirm_3d_btn
-                img_no_bg,  # current_image state
-            )
-        return (
-            gr.update(visible=False),
-            gr.update(interactive=False, visible=False),
-            None,
-        )
-
-    remove_bg_btn.click(
-        remove_background,
-        inputs=[current_image],
-        outputs=[image_no_bg, confirm_3d_btn],
-    ).then(
-        on_bg_removed,
-        inputs=[image_no_bg],
-        outputs=[image_no_bg, confirm_3d_btn, current_image],
-    )
-
-    # Step 3: Generate 3D
-    def on_3d_ready():
-        return (
-            gr.update(interactive=True, visible=True),  # generate_3d_btn
-            gr.update(visible=True),  # video_output
-            gr.update(visible=True),  # model_output
-            gr.update(interactive=False, visible=True),  # download_glb
-            gr.update(interactive=False, visible=True),  # download_gs
-        )
-
-    confirm_3d_btn.click(
-        on_3d_ready,
         outputs=[
             generate_3d_btn,
             video_output,
