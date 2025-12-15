@@ -388,6 +388,14 @@ def generate_text_to_image(
 # ============================================================================
 # Step 2: Image to 3D Generation
 # ============================================================================
+def preprocess_image(image: Image.Image) -> Image.Image:
+    """Preprocess the input image for 3D generation."""
+    if image is None:
+        return None
+    processed_image = trellis_pipeline.preprocess_image(image)
+    return processed_image
+
+
 @spaces.GPU(duration=120)
 def generate_3d_model(
     image: Image.Image,
@@ -400,10 +408,10 @@ def generate_3d_model(
     texture_size: int,
     req: gr.Request,
     progress=gr.Progress(track_tqdm=True),
-) -> Tuple[dict, str, str, str, gr.Button]:
+) -> Tuple[dict, str, str, str]:
     """Convert image to 3D model and extract GLB file."""
     if image is None:
-        return None, None, None, None, gr.update(interactive=False, visible=True)
+        return None, None, None, None
 
     user_dir = os.path.join(TMP_DIR, str(req.session_hash))
     os.makedirs(user_dir, exist_ok=True)
@@ -413,7 +421,7 @@ def generate_3d_model(
         image,
         seed=seed,
         formats=["gaussian", "mesh"],
-        preprocess_image=True,  # Let TRELLIS handle background removal
+        preprocess_image=False,  # Image already preprocessed
         sparse_structure_sampler_params={
             "steps": ss_sampling_steps,
             "cfg_strength": ss_guidance_strength,
@@ -446,13 +454,7 @@ def generate_3d_model(
     state = pack_state(gs, mesh)
 
     torch.cuda.empty_cache()
-    return (
-        state,
-        video_path,
-        glb_path,
-        glb_path,
-        gr.update(interactive=True, visible=True),
-    )
+    return state, video_path, glb_path, glb_path
 
 
 @spaces.GPU
@@ -495,208 +497,202 @@ with gr.Blocks(css=css, delete_cache=(600, 600)) as demo:
         
         Complete workflow: Generate images from text using FLUX.1 → Create 3D models with TRELLIS
         
-        **Workflow Steps:**
-        1. **Text to Image**: Enter a prompt and generate an image using FLUX.1 [dev]
-        2. **3D Generation**: Confirm and generate a 3D model using TRELLIS (background removal is handled automatically)
+        **Two workflows available:**
+        1. **Text to Image to 3D**: Generate an image from text, then create a 3D model
+        2. **Image to 3D**: Upload your own image directly to create a 3D model
         
-        Each step requires your confirmation before proceeding to the next.
+        Background removal is handled automatically by TRELLIS.
         """
     )
 
-    with gr.Column(elem_id="col-container"):
-        # Step 1: Text to Image Generation
-        gr.Markdown("## Step 1: Text to Image Generation")
-        with gr.Row():
-            # Left: Settings
-            with gr.Column(scale=1):
-                prompt = gr.Text(
-                    label="Prompt",
-                    show_label=True,
-                    max_lines=3,
-                    placeholder="Enter your text prompt here...",
+    with gr.Row(elem_id="col-container"):
+        # Left Column: Inputs and Settings
+        with gr.Column(scale=1):
+            # Text to Image Section
+            gr.Markdown("### Text to Image (Optional)")
+            prompt = gr.Text(
+                label="Prompt",
+                show_label=True,
+                max_lines=3,
+                placeholder="Enter your text prompt here...",
+            )
+
+            with gr.Row():
+                generate_image_btn = gr.Button(
+                    "Generate Image", variant="primary", scale=1
                 )
-
-                with gr.Row():
-                    generate_image_btn = gr.Button(
-                        "Generate Image", variant="primary", scale=1
-                    )
-                    confirm_image_btn = gr.Button(
-                        "Confirm & Generate 3D",
-                        variant="secondary",
-                        scale=1,
-                        interactive=False,
-                        visible=False,
-                    )
-
-                gr.Markdown("### Image Generation Settings")
-                seed = gr.Slider(
-                    label="Seed",
-                    minimum=0,
-                    maximum=MAX_SEED,
-                    step=1,
-                    value=0,
-                )
-                randomize_seed = gr.Checkbox(label="Randomize seed", value=True)
-
-                with gr.Row():
-                    width = gr.Slider(
-                        label="Width",
-                        minimum=256,
-                        maximum=MAX_IMAGE_SIZE,
-                        step=32,
-                        value=1024,
-                    )
-                    height = gr.Slider(
-                        label="Height",
-                        minimum=256,
-                        maximum=MAX_IMAGE_SIZE,
-                        step=32,
-                        value=1024,
-                    )
-
-                with gr.Row():
-                    guidance_scale = gr.Slider(
-                        label="Guidance Scale",
-                        minimum=1.0,
-                        maximum=15.0,
-                        step=0.1,
-                        value=3.5,
-                    )
-                    num_inference_steps = gr.Slider(
-                        label="Number of inference steps",
-                        minimum=1,
-                        maximum=50,
-                        step=1,
-                        value=28,
-                    )
-
-                enable_live_preview = gr.Checkbox(
-                    label="Enable Live Preview",
-                    value=True,
-                    info="Show intermediate images during generation",
-                )
-                use_quality_vae = gr.Checkbox(
-                    label="Use Quality VAE for Final Output",
-                    value=True,
-                    info="Use high-quality VAE for final image (slower but better quality)",
-                )
-                image_seed = gr.Number(
-                    label="Seed", value=0, interactive=False, visible=False
-                )
-
-            # Right: Preview
-            with gr.Column(scale=1):
-                generated_image = gr.Image(
-                    label="Generated Image",
-                    type="pil",
-                    height=500,
-                )
-
-        # Step 2: 3D Generation
-        gr.Markdown("## Step 2: 3D Model Generation")
-        with gr.Row():
-            # Left: Settings
-            with gr.Column(scale=1):
-                generate_3d_btn = gr.Button(
-                    "Generate 3D Model",
-                    variant="primary",
+                confirm_image_btn = gr.Button(
+                    "Use for 3D",
+                    variant="secondary",
+                    scale=1,
                     interactive=False,
                     visible=False,
                 )
-                extract_gs_btn = gr.Button(
-                    "Extract Gaussian", interactive=False, visible=False
+
+            gr.Markdown("### Image Generation Settings")
+            seed = gr.Slider(
+                label="Seed",
+                minimum=0,
+                maximum=MAX_SEED,
+                step=1,
+                value=0,
+            )
+            randomize_seed = gr.Checkbox(label="Randomize seed", value=True)
+
+            with gr.Row():
+                width = gr.Slider(
+                    label="Width",
+                    minimum=256,
+                    maximum=MAX_IMAGE_SIZE,
+                    step=32,
+                    value=1024,
+                )
+                height = gr.Slider(
+                    label="Height",
+                    minimum=256,
+                    maximum=MAX_IMAGE_SIZE,
+                    step=32,
+                    value=1024,
                 )
 
-                gr.Markdown("### 3D Generation Settings")
-                seed_3d = gr.Slider(0, MAX_SEED, label="Seed", value=0, step=1)
-                randomize_seed_3d = gr.Checkbox(label="Randomize Seed", value=True)
-
-                gr.Markdown("**Stage 1: Sparse Structure Generation**")
-                with gr.Row():
-                    ss_guidance_strength = gr.Slider(
-                        0.0,
-                        10.0,
-                        label="Guidance Strength",
-                        value=7.5,
-                        step=0.1,
-                    )
-                    ss_sampling_steps = gr.Slider(
-                        1, 50, label="Sampling Steps", value=12, step=1
-                    )
-
-                gr.Markdown("**Stage 2: Structured Latent Generation**")
-                with gr.Row():
-                    slat_guidance_strength = gr.Slider(
-                        0.0,
-                        10.0,
-                        label="Guidance Strength",
-                        value=3.0,
-                        step=0.1,
-                    )
-                    slat_sampling_steps = gr.Slider(
-                        1, 50, label="Sampling Steps", value=12, step=1
-                    )
-
-                gr.Markdown("**GLB Extraction Settings**")
-                mesh_simplify = gr.Slider(
-                    0.9, 0.98, label="Simplify", value=0.95, step=0.01
+            with gr.Row():
+                guidance_scale = gr.Slider(
+                    label="Guidance Scale",
+                    minimum=1.0,
+                    maximum=15.0,
+                    step=0.1,
+                    value=3.5,
                 )
-                texture_size = gr.Slider(
-                    512, 2048, label="Texture Size", value=1024, step=512
+                num_inference_steps = gr.Slider(
+                    label="Number of inference steps",
+                    minimum=1,
+                    maximum=50,
+                    step=1,
+                    value=28,
                 )
 
-            # Right: Previews
-            with gr.Column(scale=1):
-                video_output = gr.Video(
-                    label="Generated 3D Asset",
-                    autoplay=True,
-                    loop=True,
-                    height=300,
-                    visible=False,
+            enable_live_preview = gr.Checkbox(
+                label="Enable Live Preview",
+                value=True,
+                info="Show intermediate images during generation",
+            )
+            use_quality_vae = gr.Checkbox(
+                label="Use Quality VAE for Final Output",
+                value=True,
+                info="Use high-quality VAE for final image (slower but better quality)",
+            )
+            image_seed = gr.Number(
+                label="Seed", value=0, interactive=False, visible=False
+            )
+
+            # Image to 3D Section
+            gr.Markdown("### Image to 3D")
+            trellis_image_input = gr.Image(
+                label="Image Input for 3D Generation",
+                format="png",
+                image_mode="RGBA",
+                type="pil",
+                height=300,
+            )
+
+            generate_3d_btn = gr.Button(
+                "Generate 3D Model",
+                variant="primary",
+            )
+            extract_gs_btn = gr.Button("Extract Gaussian", interactive=False)
+
+            gr.Markdown("### 3D Generation Settings")
+            seed_3d = gr.Slider(0, MAX_SEED, label="Seed", value=0, step=1)
+            randomize_seed_3d = gr.Checkbox(label="Randomize Seed", value=True)
+
+            gr.Markdown("**Stage 1: Sparse Structure Generation**")
+            with gr.Row():
+                ss_guidance_strength = gr.Slider(
+                    0.0,
+                    10.0,
+                    label="Guidance Strength",
+                    value=7.5,
+                    step=0.1,
                 )
-                model_output = LitModel3D(
-                    label="Extracted GLB/Gaussian",
-                    exposure=10.0,
-                    height=300,
-                    visible=False,
+                ss_sampling_steps = gr.Slider(
+                    1, 50, label="Sampling Steps", value=12, step=1
                 )
 
-                with gr.Row():
-                    download_glb = gr.DownloadButton(
-                        label="Download GLB", interactive=False, visible=False
-                    )
-                    download_gs = gr.DownloadButton(
-                        label="Download Gaussian", interactive=False, visible=False
-                    )
+            gr.Markdown("**Stage 2: Structured Latent Generation**")
+            with gr.Row():
+                slat_guidance_strength = gr.Slider(
+                    0.0,
+                    10.0,
+                    label="Guidance Strength",
+                    value=3.0,
+                    step=0.1,
+                )
+                slat_sampling_steps = gr.Slider(
+                    1, 50, label="Sampling Steps", value=12, step=1
+                )
+
+            gr.Markdown("**GLB Extraction Settings**")
+            mesh_simplify = gr.Slider(
+                0.9, 0.98, label="Simplify", value=0.95, step=0.01
+            )
+            texture_size = gr.Slider(
+                512, 2048, label="Texture Size", value=1024, step=512
+            )
+
+        # Right Column: Outputs
+        with gr.Column(scale=1):
+            generated_image = gr.Image(
+                label="Generated Image",
+                type="pil",
+                height=300,
+            )
+
+            video_output = gr.Video(
+                label="Generated 3D Asset",
+                autoplay=True,
+                loop=True,
+                height=300,
+            )
+            model_output = LitModel3D(
+                label="Extracted GLB/Gaussian",
+                exposure=10.0,
+                height=300,
+            )
+
+            with gr.Row():
+                download_glb = gr.DownloadButton(
+                    label="Download GLB", interactive=False
+                )
+                download_gs = gr.DownloadButton(
+                    label="Download Gaussian", interactive=False
+                )
 
     # State variables
     output_buf = gr.State()
-    current_image = gr.State()
 
-    # Examples
+    # Examples for text prompts
     gr.Examples(
         examples=examples,
         inputs=[prompt],
+        label="Example Prompts",
     )
 
     # ========================================================================
     # Event Handlers
     # ========================================================================
 
-    # Step 1: Generate image
+    # Text to Image handlers
     def on_image_generated(img, seed_val):
         if img is not None:
             return (
                 img,
                 seed_val,
                 gr.update(interactive=True, visible=True),  # confirm_image_btn
-                img,  # current_image state
             )
         return (
             None,
             seed_val,
             gr.update(interactive=False, visible=False),
-            None,
         )
 
     generate_image_btn.click(
@@ -720,29 +716,32 @@ with gr.Blocks(css=css, delete_cache=(600, 600)) as demo:
     ).then(
         on_image_generated,
         inputs=[generated_image, image_seed],
-        outputs=[generated_image, image_seed, confirm_image_btn, current_image],
+        outputs=[generated_image, image_seed, confirm_image_btn],
     )
 
-    # Step 2: Generate 3D (background removal handled by TRELLIS)
+    # When user confirms generated image, assign it to TRELLIS input
     confirm_image_btn.click(
-        lambda: gr.update(interactive=True, visible=True),
-        outputs=[generate_3d_btn],
+        lambda img: preprocess_image(img) if img is not None else None,
+        inputs=[generated_image],
+        outputs=[trellis_image_input],
     )
 
+    # Preprocess image when uploaded to TRELLIS input
+    trellis_image_input.upload(
+        preprocess_image,
+        inputs=[trellis_image_input],
+        outputs=[trellis_image_input],
+    )
+
+    # Image to 3D handlers (matching working implementation)
     generate_3d_btn.click(
-        lambda: (
-            gr.update(visible=True),  # video_output
-            gr.update(visible=True),  # model_output
-        ),
-        outputs=[video_output, model_output],
-    ).then(
         get_seed,
         inputs=[randomize_seed_3d, seed_3d],
         outputs=[seed_3d],
     ).then(
         generate_3d_model,
         inputs=[
-            current_image,
+            trellis_image_input,
             seed_3d,
             ss_guidance_strength,
             ss_sampling_steps,
@@ -751,10 +750,21 @@ with gr.Blocks(css=css, delete_cache=(600, 600)) as demo:
             mesh_simplify,
             texture_size,
         ],
-        outputs=[output_buf, video_output, model_output, download_glb, extract_gs_btn],
+        outputs=[output_buf, video_output, model_output, download_glb],
     ).then(
-        lambda: gr.update(interactive=True, visible=True),
-        outputs=[download_glb],
+        lambda: tuple([gr.Button(interactive=True), gr.Button(interactive=True)]),
+        outputs=[extract_gs_btn, download_glb],
+    )
+
+    video_output.clear(
+        lambda: tuple(
+            [
+                gr.Button(interactive=False),
+                gr.Button(interactive=False),
+                gr.Button(interactive=False),
+            ]
+        ),
+        outputs=[extract_gs_btn, download_glb, download_gs],
     )
 
     extract_gs_btn.click(
@@ -762,8 +772,13 @@ with gr.Blocks(css=css, delete_cache=(600, 600)) as demo:
         inputs=[output_buf],
         outputs=[model_output, download_gs],
     ).then(
-        lambda: gr.update(interactive=True, visible=True),
+        lambda: gr.Button(interactive=True),
         outputs=[download_gs],
+    )
+
+    model_output.clear(
+        lambda: tuple([gr.Button(interactive=False), gr.Button(interactive=False)]),
+        outputs=[download_glb, download_gs],
     )
 
 
